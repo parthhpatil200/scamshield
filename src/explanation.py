@@ -3,10 +3,25 @@ def generate_explanation(flags: dict, risk_level: str) -> str:
     Generates a human-readable explanation for the scam risk.
     """
 
+    # --- Special case: Safe OTP notification ---
+    if flags.get("otp_notification_safe"):
+        return (
+            "This appears to be a legitimate OTP notification and includes advice not to share the code, "
+            "which is typical of secure authentication messages."
+        )
+
     reasons = []
+
+    if flags.get("sensitive_info_request"):
+        reasons.append("requests sensitive financial information such as card details, PIN, or account numbers")
 
     if flags.get("otp_request"):
         reasons.append("requests sensitive information like an OTP")
+
+    if flags.get("prize_scam") and flags.get("financial_pressure"):
+        reasons.append("uses a prize/lottery scam tactic requiring payment (advance-fee fraud)")
+    elif flags.get("financial_pressure"):
+        reasons.append("pressures the user to send or transfer money")
 
     if flags.get("urgency"):
         reasons.append("creates urgency to pressure immediate action")
@@ -17,10 +32,7 @@ def generate_explanation(flags: dict, risk_level: str) -> str:
     if flags.get("fear_threat"):
         reasons.append("uses fear or threats to manipulate the recipient")
 
-    if flags.get("financial_pressure"):
-        reasons.append("pressures the user to send or transfer money")
-
-    # --- LOW RISK EXPLANATION (REFINED) ---
+    # --- LOW RISK EXPLANATION ---
     if risk_level == "Low":
         if not reasons:
             return (
@@ -35,6 +47,14 @@ def generate_explanation(flags: dict, risk_level: str) -> str:
             )
 
     # --- MEDIUM / HIGH RISK EXPLANATION ---
+    if not reasons:
+        # Fallback when ML detected spam but no rules fired
+        return (
+            f"This message is classified as {risk_level} risk. "
+            "The content exhibits characteristics typical of scam messages, "
+            "including suspicious language patterns and fraudulent intent."
+        )
+
     explanation = (
         f"This message is classified as {risk_level} risk because it "
         + ", and ".join(reasons)
