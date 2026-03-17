@@ -143,6 +143,38 @@ PRIZE_SCAM_PATTERNS = [
     r"lucky.*winner",
 ]
 
+# --- DELIVERY / SHIPPING FEE SCAM ---
+DELIVERY_SCAM_PATTERNS = [
+    r"\b(?:usps|fedex|dhl|ups|courier|parcel|shipment|delivery)\b.{0,50}\b(?:fee|pay|customs?|release|hold|pending)\b",
+    r"\b(?:package|parcel|shipment)\b.{0,40}\b(?:held|detained|suspended|unpaid|failed|pending)\b",
+    r"\b(?:pay|settle|clear)\b.{0,30}\b(?:customs?|shipping|handling|redelivery|import)\s*(?:fee|charge|duty)\b",
+    r"\bdelivery\s*(?:failed|pending|suspended|problem|issue)\b",
+]
+
+# --- TOLL / GOVERNMENT FEE SCAM ---
+TOLL_SCAM_PATTERNS = [
+    r"\b(?:e-?zpass|sunpass|fastag|nhai|toll)\b.{0,50}\b(?:unpaid|overdue|due|outstanding|pay|fine|penalty)\b",
+    r"\bunpaid\s*toll\b",
+    r"\btoll\s*(?:violation|fee|balance|charge|fine)\b",
+]
+
+# --- GIFT CARD DEMAND (boss impersonation, forced purchase) ---
+GIFT_CARD_SCAM_PATTERNS = [
+    r"\b(?:buy|purchase|get)\b.{0,40}\b(?:gift\s*cards?|amazon\s*cards?|google\s*play|itunes|steam)\b",
+    r"\bgift\s*card\b.{0,40}\b(?:codes?|redemption|send|text|share)\b",
+    r"\b(?:amazon|google|apple|itunes|steam|walmart)\b.{0,20}\bgift\s*cards?\b",
+]
+
+# --- CRYPTO / INVESTMENT SCAM ---
+CRYPTO_INVESTMENT_PATTERNS = [
+    r"\b(?:guaranteed|risk.?free)\b.{0,30}\b(?:return|profit|income|roi)\b",
+    r"\b(?:crypto|bitcoin|ethereum|token|coin)\b.{0,50}\b(?:invest|buy|earn|profit|10x|pump|explode)\b",
+    r"\b(?:10x|100x|moon|pump)\b.{0,30}\b(?:coin|token|crypto|investment)\b",
+    r"\b(?:ai\s*trading|trading\s*bot|signals?)\b.{0,30}\b(?:profit|earn|guaranteed|daily)\b",
+    r"\b(?:passive\s*income|weekly\s*returns?)\b.{0,30}\b(?:crypto|invest|platform|trading)\b",
+    r"\bwrong\s*number\b.{0,100}\b(?:invest|crypto|income|earn|trading)\b",
+]
+
 
 # --- Helper function ---
 
@@ -218,6 +250,10 @@ def detect_scam_flags(text: str) -> dict:
         "financial_pressure": _match_any(FINANCIAL_PATTERNS, text),
         "sensitive_info_request": _match_any(SENSITIVE_INFO_PATTERNS, text),
         "prize_scam": _match_any(PRIZE_SCAM_PATTERNS, text),
+        "delivery_scam": _match_any(DELIVERY_SCAM_PATTERNS, text),
+        "toll_scam": _match_any(TOLL_SCAM_PATTERNS, text),
+        "gift_card_scam": _match_any(GIFT_CARD_SCAM_PATTERNS, text),
+        "crypto_investment_scam": _match_any(CRYPTO_INVESTMENT_PATTERNS, text),
     }
 
     return flags

@@ -1,8 +1,14 @@
 """
-Generate synthetic legitimate banking SMS messages for training data augmentation.
-Creates 15,000 realistic banking notifications to balance the dataset.
+Generate synthetic legitimate SMS messages for training data augmentation.
+
+Focus:
+- Upscale legitimate volume.
+- Add hard-negative contexts that contain risky keywords (OTP, urgent, verify,
+  payment, toll, delivery, refund, subscription, gift card, crypto) but are
+  clearly authentic/safe.
 """
 
+import argparse
 import pandas as pd
 import random
 from pathlib import Path
@@ -68,6 +74,71 @@ TRANSACTION_CONFIRM_TEMPLATES = [
     "Transaction alert: Rs {amount} transaction successful on A/C {account}.",
 ]
 
+# Hard-negative templates: legitimate content with scam-like keywords.
+SECURITY_ADVISORY_TEMPLATES = [
+    "Security Alert: Never share OTP, PIN, CVV, or passwords with anyone. Bank staff will never ask.",
+    "Important: If you receive urgent payment or toll messages from unknown numbers, do not click links.",
+    "Fraud Advisory: Ignore texts asking to verify account via unknown links. Use only official banking app.",
+    "Customer Notice: We never request OTP/UPI PIN over calls, SMS, or WhatsApp.",
+    "Cyber Safety: Do not share card details, CVV, netbanking password, or verification code with anyone.",
+    "Security Update: Genuine bank messages include anti-fraud warning 'Do not share OTP'.",
+    "Awareness Alert: Gift card code requests claiming to be your boss are fraudulent. Report immediately.",
+    "Public Notice: Tax, utility, and toll scams may create urgency. Verify using official websites only.",
+]
+
+DELIVERY_UPDATE_TEMPLATES = [
+    "Order Update: Your package {pkg} from {merchant} is out for delivery today. No payment required.",
+    "Delivery Confirmation: Parcel {pkg} delivered successfully at {time}. Thank you for shopping with {merchant}.",
+    "Logistics Update: Shipment {pkg} has reached local hub and will be delivered by {date}.",
+    "Delivery Notice: Your package {pkg} is delayed due to weather. Revised ETA: {date}. No action needed.",
+    "Courier Alert: Address verification completed for shipment {pkg}. Delivery is scheduled for {date}.",
+    "Package Status: Item {pkg} has been shipped and is in transit. Track in official app.",
+]
+
+TOLL_RECEIPT_TEMPLATES = [
+    "FASTag Receipt: Toll Rs {amount} deducted for vehicle {vehicle}. Balance: Rs {balance}.",
+    "E-ZPass Receipt: Toll charge ${usd} processed successfully. Ref: {txn_id}.",
+    "SunPass Update: Toll payment of ${usd} completed. No dues pending.",
+    "NHAI FASTag: Toll transaction successful for vehicle {vehicle}. Deducted Rs {amount}.",
+    "Toll Statement: Monthly summary generated. View details in official app. No immediate payment required.",
+]
+
+SUBSCRIPTION_INVOICE_TEMPLATES = [
+    "Invoice: Your {service} subscription renewed for Rs {amount}. Ref: {txn_id}.",
+    "Payment Success: {service} monthly plan of Rs {amount} has been processed.",
+    "Billing Update: {service} renewal due on {date}. Manage auto-pay in official app.",
+    "Subscription Notice: Your {service} plan will renew on {date}. No action required if unchanged.",
+    "Reminder: Upcoming renewal for {service}. Please review your plan settings in account dashboard.",
+]
+
+REFUND_PROCESSED_TEMPLATES = [
+    "Refund Processed: Rs {amount} for order {order_id} has been credited to your original payment method.",
+    "Refund Update: Your refund of Rs {amount} is initiated and will reflect within 3-5 working days.",
+    "Transaction Reversal: Rs {amount} has been reversed to account {account}. Ref: {txn_id}.",
+    "Merchant Refund: Rs {amount} credited successfully. No further action required.",
+    "Payment Reversal Complete: Rs {amount} for failed transaction has been auto-refunded.",
+]
+
+ACCOUNT_VERIFICATION_SAFE_TEMPLATES = [
+    "Account Notice: KYC remains valid. For profile updates, use official app only. Do not share OTP.",
+    "Verification Reminder: Review account details in official app before {date}. No phone verification needed.",
+    "Security Check Complete: Your account verification is successful. No further action is required.",
+    "Profile Alert: If you did not request account changes, contact official support immediately.",
+    "Customer Update: PAN/Aadhaar linking status is up to date. Avoid third-party links for verification.",
+]
+
+JOB_RECRUITER_AWARENESS_TEMPLATES = [
+    "Fraud Alert: Legitimate employers never ask task fees, wallet top-ups, or advance payment for jobs.",
+    "Safety Tip: Ignore 'easy remote task' messages promising daily income with upfront deposits.",
+    "Cyber Cell Advisory: Report fake recruiter and task scams asking you to buy credits to withdraw earnings.",
+]
+
+CRYPTO_AWARENESS_TEMPLATES = [
+    "Investment Advisory: Guaranteed crypto returns are high-risk claims. Verify platforms before investing.",
+    "Security Notice: Do not share wallet seed phrases, OTPs, or exchange passwords with anyone.",
+    "Bank Alert: We do not provide crypto trading tips over SMS. Beware of pump-and-dump messages.",
+]
+
 # --- Data generators ---
 
 def random_amount():
@@ -125,18 +196,60 @@ def random_merchant():
     return random.choice(merchants)
 
 
-def generate_messages(num_samples=15000):
-    """Generate legitimate banking SMS messages"""
+def random_vehicle():
+    """Generate a random vehicle number string"""
+    state = random.choice(["KA", "MH", "DL", "TN", "GJ", "UP", "TS", "RJ"])
+    return f"{state}{random.randint(10,99)}{random.choice(['A', 'B', 'C', 'D'])}{random.randint(1000,9999)}"
+
+
+def random_time():
+    """Generate random HH:MM time"""
+    return f"{random.randint(0,23):02d}:{random.randint(0,59):02d}"
+
+
+def random_service():
+    """Generate common subscription services"""
+    return random.choice([
+        "Netflix", "Amazon Prime", "Spotify", "Hotstar", "YouTube Premium",
+        "Apple iCloud", "Microsoft 365", "Adobe CC", "JioCinema"
+    ])
+
+
+def random_order_id():
+    """Generate a random order id"""
+    return f"ORD{random.randint(100000, 999999)}"
+
+
+def random_pkg_id():
+    """Generate a random package/shipment id"""
+    chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    return "".join(random.choices(chars, k=10))
+
+
+def generate_messages(num_samples=30000):
+    """Generate legitimate SMS messages with hard-negative contexts."""
     
     messages = []
     
-    # Distribution: 30% debit, 20% credit, 30% OTP, 10% balance, 10% payment/txn
-    num_debit = int(num_samples * 0.30)
-    num_credit = int(num_samples * 0.20)
-    num_otp = int(num_samples * 0.30)
-    num_balance = int(num_samples * 0.10)
-    num_payment = int(num_samples * 0.05)
-    num_txn = num_samples - (num_debit + num_credit + num_otp + num_balance + num_payment)
+    # Distribution keeps core banking messages while adding contextual hard negatives.
+    num_debit = int(num_samples * 0.18)
+    num_credit = int(num_samples * 0.14)
+    num_otp = int(num_samples * 0.18)
+    num_balance = int(num_samples * 0.08)
+    num_payment = int(num_samples * 0.10)
+    num_txn = int(num_samples * 0.07)
+    num_security = int(num_samples * 0.08)
+    num_delivery = int(num_samples * 0.05)
+    num_toll = int(num_samples * 0.04)
+    num_subscription = int(num_samples * 0.03)
+    num_refund = int(num_samples * 0.03)
+    num_verification_safe = int(num_samples * 0.01)
+    num_job_awareness = int(num_samples * 0.005)
+    num_crypto_awareness = num_samples - (
+        num_debit + num_credit + num_otp + num_balance + num_payment + num_txn
+        + num_security + num_delivery + num_toll + num_subscription + num_refund
+        + num_verification_safe + num_job_awareness
+    )
     
     # Generate debit messages
     for _ in range(num_debit):
@@ -201,6 +314,63 @@ def generate_messages(num_samples=15000):
             txn_id=random_txn_id()
         )
         messages.append(msg)
+
+    # Generate security advisories with risky keywords in safe context.
+    for _ in range(num_security):
+        messages.append(random.choice(SECURITY_ADVISORY_TEMPLATES))
+
+    # Generate legitimate delivery updates.
+    for _ in range(num_delivery):
+        template = random.choice(DELIVERY_UPDATE_TEMPLATES)
+        messages.append(template.format(
+            pkg=random_pkg_id(),
+            merchant=random_merchant(),
+            time=random_time(),
+            date=random_date(),
+        ))
+
+    # Generate legitimate toll receipts.
+    for _ in range(num_toll):
+        template = random.choice(TOLL_RECEIPT_TEMPLATES)
+        messages.append(template.format(
+            amount=random_amount(),
+            usd=round(random.uniform(1.0, 20.0), 2),
+            vehicle=random_vehicle(),
+            balance=random_balance(),
+            txn_id=random_txn_id(),
+        ))
+
+    # Generate legitimate subscription invoices and reminders.
+    for _ in range(num_subscription):
+        template = random.choice(SUBSCRIPTION_INVOICE_TEMPLATES)
+        messages.append(template.format(
+            service=random_service(),
+            amount=random_amount(),
+            date=random_date(),
+            txn_id=random_txn_id(),
+        ))
+
+    # Generate legitimate refunds.
+    for _ in range(num_refund):
+        template = random.choice(REFUND_PROCESSED_TEMPLATES)
+        messages.append(template.format(
+            amount=random_amount(),
+            order_id=random_order_id(),
+            account=random_account(),
+            txn_id=random_txn_id(),
+        ))
+
+    # Generate safe verification/account notices.
+    for _ in range(num_verification_safe):
+        template = random.choice(ACCOUNT_VERIFICATION_SAFE_TEMPLATES)
+        messages.append(template.format(date=random_date()))
+
+    # Generate anti-scam awareness SMS (still legitimate).
+    for _ in range(num_job_awareness):
+        messages.append(random.choice(JOB_RECRUITER_AWARENESS_TEMPLATES))
+
+    for _ in range(num_crypto_awareness):
+        messages.append(random.choice(CRYPTO_AWARENESS_TEMPLATES))
     
     # Shuffle messages
     random.shuffle(messages)
@@ -210,11 +380,18 @@ def generate_messages(num_samples=15000):
 
 def main():
     """Generate and save legitimate banking data"""
-    print("Generating 15,000 legitimate banking SMS messages...")
+    parser = argparse.ArgumentParser(description="Generate legitimate SMS training data.")
+    parser.add_argument("--samples", type=int, default=30000, help="Number of legitimate messages to generate")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for deterministic generation")
+    args = parser.parse_args()
+
+    random.seed(args.seed)
+
+    print(f"Generating {args.samples:,} legitimate SMS messages...")
     print("=" * 60)
     
     # Generate messages
-    messages = generate_messages(15000)
+    messages = generate_messages(args.samples)
     
     # Create DataFrame
     df = pd.DataFrame({
@@ -236,11 +413,11 @@ def main():
         print(f"{i}. {msg}")
     
     print("\nMessage type distribution:")
-    print(f"  - Debit notifications: ~30%")
-    print(f"  - Credit notifications: ~20%")
-    print(f"  - OTP messages: ~30%")
-    print(f"  - Balance enquiries: ~10%")
-    print(f"  - Payment confirmations: ~10%")
+    print(f"  - Core banking txns (debit/credit/payment/txn): ~49%")
+    print(f"  - OTP and verification-safe messages: ~19%")
+    print(f"  - Security advisories with risky keywords: ~8%")
+    print(f"  - Delivery/toll/subscription/refund legit contexts: ~15%")
+    print(f"  - Fraud-awareness (job/crypto): ~1%")
 
 
 if __name__ == "__main__":

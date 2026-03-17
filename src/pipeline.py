@@ -43,7 +43,7 @@ def analyze_text(text: str) -> dict:
     flags = detect_scam_flags(cleaned_text)  # ← CHANGED FROM: detect_scam_flags(text)
 
     # --- Risk scoring ---
-    risk = compute_risk_score(ml_probability, flags)
+    risk = compute_risk_score(ml_probability, flags, detected_scam_features)
 
     # --- Explanation ---
     explanation = generate_explanation(flags, risk["risk_level"])

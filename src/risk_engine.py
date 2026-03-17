@@ -9,15 +9,20 @@ PATTERN_WEIGHTS = {
     "financial_pressure": 10,
     "sensitive_info_request": 20,
     "prize_scam": 5,
+    "delivery_scam": 8,
+    "toll_scam": 8,
+    "gift_card_scam": 12,
+    "crypto_investment_scam": 8,
 }
 PATTERN_MAX_SCORE = sum(PATTERN_WEIGHTS.values())
 
 
-def compute_risk_score(ml_probability: float, flags: dict) -> dict:
+def compute_risk_score(ml_probability: float, flags: dict, scam_features: dict | None = None) -> dict:
     """
     Computes final scam risk score and level.
     ml_probability: float between 0 and 1
     flags: dictionary of detected scam flags
+    scam_features: optional dictionary of regex scam features (e.g. link_present, financial_request)
     """
 
     # --- ML score ---
@@ -41,6 +46,19 @@ def compute_risk_score(ml_probability: float, flags: dict) -> dict:
 
     # --- Cap score ---
     final_score = min(max(int(round(blended_score)), 0), 100)
+
+    # --- Ambiguity override ---
+    # If a message only references authority (bank/government/etc.) but has no
+    # clear action-oriented scam signals, keep it in Medium risk.
+    features = scam_features or {}
+    has_authority = bool(flags.get("authority_impersonation"))
+    has_otp_request = bool(flags.get("otp_request"))
+    has_link = bool(features.get("link_present"))
+    has_financial_request = bool(features.get("financial_request") or flags.get("financial_pressure"))
+
+    if has_authority and (not has_otp_request) and (not has_link) and (not has_financial_request):
+        # Force Medium band as requested (40-60) and avoid High classification.
+        final_score = min(max(final_score, 40), 60)
 
     # --- Risk level ---
     if final_score <= 30:

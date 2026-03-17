@@ -53,6 +53,28 @@ PHONE_NUMBER_REQUEST_PATTERNS = [
     r"(?:\+?\d[\d\s\-]{9,}\d)",
 ]
 
+# Fake delivery / shipping fee scams (USPS, FedEx, DHL, customs).
+DELIVERY_SCAM_PATTERNS = [
+    r"\b(?:usps|fedex|dhl|ups|courier|parcel|shipment|delivery)\b.{0,50}\b(?:fee|pay|customs?|release|hold|pending)\b",
+    r"\b(?:package|parcel|shipment)\b.{0,40}\b(?:held|detained|suspended|unpaid|failed|pending)\b",
+    r"\b(?:pay|settle|clear)\b.{0,30}\b(?:customs?|shipping|handling|redelivery|import)\s*(?:fee|charge|duty)\b",
+    r"\bdelivery\s*(?:failed|pending|suspended|problem|issue)\b",
+]
+
+# Toll / government fee scams.
+TOLL_SCAM_PATTERNS = [
+    r"\b(?:e-?zpass|sunpass|fastag|nhai|toll)\b.{0,50}\b(?:unpaid|overdue|due|outstanding|pay|fine|penalty)\b",
+    r"\bunpaid\s*toll\b",
+    r"\btoll\s*(?:violation|fee|balance|charge|fine)\b",
+]
+
+# Gift-card demand scams (boss impersonation, forced gift-card purchase).
+GIFT_CARD_SCAM_PATTERNS = [
+    r"\b(?:buy|purchase|get)\b.{0,40}\b(?:gift\s*cards?|amazon\s*cards?|google\s*play|itunes|steam)\b",
+    r"\bgift\s*card\b.{0,40}\b(?:codes?|redemption|send|text|share)\b",
+    r"\b(?:amazon|google|apple|itunes|steam|walmart)\b.{0,20}\bgift\s*cards?\b",
+]
+
 
 def _has_pattern(text: str, patterns: list[str]) -> int:
     """Return 1 if any regex pattern matches the input text, else 0."""
@@ -81,6 +103,9 @@ def extract_scam_features(text: str) -> dict[str, int]:
         "reward_promise": _has_pattern(safe_text, REWARD_PROMISE_PATTERNS),
         "link_present": _has_pattern(safe_text, LINK_PRESENT_PATTERNS),
         "phone_number_request": _has_pattern(safe_text, PHONE_NUMBER_REQUEST_PATTERNS),
+        "delivery_scam": _has_pattern(safe_text, DELIVERY_SCAM_PATTERNS),
+        "toll_scam": _has_pattern(safe_text, TOLL_SCAM_PATTERNS),
+        "gift_card_scam": _has_pattern(safe_text, GIFT_CARD_SCAM_PATTERNS),
     }
 
 
@@ -103,4 +128,7 @@ def extract_features_batch(texts: list[str]) -> pd.DataFrame:
         "reward_promise",
         "link_present",
         "phone_number_request",
+        "delivery_scam",
+        "toll_scam",
+        "gift_card_scam",
     ])

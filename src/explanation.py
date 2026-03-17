@@ -31,7 +31,17 @@ def generate_explanation(flags: dict, risk_level: str) -> str:
 
     if flags.get("fear_threat"):
         reasons.append("uses fear or threats to manipulate the recipient")
+    if flags.get("delivery_scam"):
+        reasons.append("impersonates a delivery service and demands an unexpected fee")
 
+    if flags.get("toll_scam"):
+        reasons.append("claims an unpaid toll or government fee to extract payment")
+
+    if flags.get("gift_card_scam"):
+        reasons.append("coerces the recipient into purchasing gift cards and sharing codes")
+
+    if flags.get("crypto_investment_scam"):
+        reasons.append("promotes guaranteed investment returns or unsolicited cryptocurrency opportunities")
     # --- LOW RISK EXPLANATION ---
     if risk_level == "Low":
         if not reasons:

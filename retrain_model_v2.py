@@ -3,7 +3,6 @@ Retrain ScamShield model with augmented legitimate banking data.
 Merges synthetic banking samples with existing spam dataset and retrains.
 """
 
-import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support
@@ -21,51 +20,25 @@ from src.preprocessing import clean_text
 from src.scam_patterns import extract_features_batch
 
 
-def load_legitimate_banking_data():
-    """Load generated legitimate banking samples"""
-    legit_path = Path(__file__).parent / "data" / "raw" / "legitimate_banking_samples.csv"
-    
-    if not legit_path.exists():
-        print(f"❌ Legitimate banking data not found at {legit_path}")
-        print("Please run: python generate_legit_banking_data.py first")
-        sys.exit(1)
-    
-    df = pd.read_csv(legit_path)
-    print(f"✅ Loaded {len(df)} legitimate banking samples")
-    return df
-
-
 def merge_datasets():
-    """Merge existing spam data with legitimate banking samples"""
+    """Load merged dataset used for training.
+
+    merge_and_dedupe_datasets() already includes:
+    - spam.csv
+    - Combined-Labeled-Dataset.csv
+    - synthetic_scams.csv
+    - synthetic_scams_2026.csv (run generate_synthetic_scams_2026.py first)
+    - legitimate_banking_samples.csv (forced to label=0)
+    - Dataset_5971.csv (ham/spam/smishing)
+    """
     print("\n" + "="*60)
     print("STEP 1: Loading and Merging Datasets")
     print("="*60)
-    
-    # Load existing spam/scam data
-    print("\n1. Loading existing spam/scam datasets...")
-    df_spam = merge_and_dedupe_datasets()
-    
-    # Load legitimate banking data
-    print("\n2. Loading legitimate banking samples...")
-    df_legit = load_legitimate_banking_data()
-    
-    # Merge both datasets
-    print("\n3. Merging datasets...")
-    df_merged = pd.concat([df_spam, df_legit], ignore_index=True)
-    print(f"   Total rows after merge: {len(df_merged)}")
-    
-    # Deduplicate
-    print("\n4. Deduplicating messages...")
-    initial_count = len(df_merged)
-    df_merged['text_lower'] = df_merged['text'].str.lower().str.strip()
-    df_merged = df_merged.drop_duplicates(subset=['text_lower'], keep='first')
-    df_merged = df_merged.drop(columns=['text_lower'])
-    duplicates_removed = initial_count - len(df_merged)
-    print(f"   Removed {duplicates_removed} duplicates")
-    print(f"   Final dataset size: {len(df_merged)}")
-    
-    # Label distribution
-    print("\n5. Dataset composition:")
+
+    print("\n1. Loading merged scam/ham datasets...")
+    df_merged = merge_and_dedupe_datasets()
+
+    print("\n2. Dataset composition:")
     label_counts = df_merged['label'].value_counts().sort_index()
     ham_count = label_counts.get(0, 0)
     spam_count = label_counts.get(1, 0)

@@ -111,8 +111,141 @@ def load_synthetic_scams(data_path: str) -> pd.DataFrame:
         print(f"  ⚠️  This will result in poor OTP scam detection!")
         return pd.DataFrame(columns=['text', 'label'])
 
+def load_legitimate_banking(data_path: str) -> pd.DataFrame:
+    """
+    Load legitimate banking messages and force them to ham (label=0).
+    """
+    try:
+        df = pd.read_csv(data_path)
+    except UnicodeDecodeError:
+        try:
+            df = pd.read_csv(data_path, encoding='cp1252')
+        except UnicodeDecodeError:
+            df = pd.read_csv(data_path, encoding='latin-1')
+    except FileNotFoundError:
+        print(f"  WARNING: Legitimate banking dataset not found at {data_path}")
+        print("  Training will proceed without legitimate banking samples")
+        return pd.DataFrame(columns=['text', 'label'])
 
-def merge_and_dedupe_datasets(data_dir: str = None) -> pd.DataFrame:
+    # Support either `text` or `message` column naming.
+    if 'text' not in df.columns and 'message' in df.columns:
+        df = df.rename(columns={'message': 'text'})
+
+    if 'text' not in df.columns:
+        print(f"  WARNING: Legitimate banking dataset missing text column. Found: {list(df.columns)}")
+        return pd.DataFrame(columns=['text', 'label'])
+
+    # Per requirement: legitimate banking messages are non-spam.
+    df['label'] = 0
+    df = df[['text', 'label']]
+    df = df.dropna(subset=['text'])
+    df = df[df['text'].str.strip().str.len() > 0]
+
+    return df
+
+
+def load_dataset_5971(data_path: str) -> pd.DataFrame:
+    """Load Dataset_5971.csv and normalize to text/label format.
+
+    Expected columns:
+    - LABEL: ham/spam/smishing
+    - TEXT: message body
+    """
+    try:
+        df = pd.read_csv(data_path)
+    except UnicodeDecodeError:
+        try:
+            df = pd.read_csv(data_path, encoding='cp1252')
+        except UnicodeDecodeError:
+            df = pd.read_csv(data_path, encoding='latin-1')
+    except FileNotFoundError:
+        print(f"  WARNING: Dataset_5971.csv not found at {data_path}")
+        return pd.DataFrame(columns=['text', 'label'])
+
+    # Normalize column names for downstream compatibility.
+    rename_map = {
+        'LABEL': 'label',
+        'TEXT': 'text',
+    }
+    df = df.rename(columns=rename_map)
+
+    if 'text' not in df.columns or 'label' not in df.columns:
+        print(f"  WARNING: Dataset_5971.csv missing required columns. Found: {list(df.columns)}")
+        return pd.DataFrame(columns=['text', 'label'])
+
+    # Normalize labels: ham=0, spam/smishing=1
+    df['label'] = df['label'].astype(str).str.strip().str.lower().map({
+        'ham': 0,
+        'spam': 1,
+        'smishing': 1,
+    })
+
+    df = df[['text', 'label']]
+    df = df.dropna(subset=['text', 'label'])
+    df['label'] = df['label'].astype(int)
+    df = df[df['text'].astype(str).str.strip().str.len() > 0]
+
+    return df
+
+
+def balance_binary_labels(
+    df: pd.DataFrame,
+    target_spam_ratio: float = 0.40,
+    random_state: int = 42,
+) -> pd.DataFrame:
+    """Balance binary labels by downsampling the majority class.
+
+    Strategy:
+    - Keep all minority class rows.
+    - Downsample majority class to approach target_spam_ratio.
+    """
+    if df.empty or "label" not in df.columns:
+        return df
+
+    if target_spam_ratio <= 0 or target_spam_ratio >= 1:
+        raise ValueError("target_spam_ratio must be between 0 and 1")
+
+    ham_df = df[df["label"] == 0]
+    spam_df = df[df["label"] == 1]
+
+    ham_count = len(ham_df)
+    spam_count = len(spam_df)
+
+    if ham_count == 0 or spam_count == 0:
+        return df
+
+    current_spam_ratio = spam_count / (ham_count + spam_count)
+
+    # Already close enough to target: skip reshaping.
+    if abs(current_spam_ratio - target_spam_ratio) <= 0.01:
+        return df
+
+    # Determine desired class counts while preserving minority samples.
+    if current_spam_ratio < target_spam_ratio:
+        # Spam is minority: keep spam, downsample ham.
+        target_ham = int(round(spam_count * (1 - target_spam_ratio) / target_spam_ratio))
+        if target_ham >= ham_count:
+            return df
+        ham_sampled = ham_df.sample(n=target_ham, random_state=random_state)
+        balanced_df = pd.concat([spam_df, ham_sampled], ignore_index=True)
+    else:
+        # Ham is minority: keep ham, downsample spam.
+        target_spam = int(round(ham_count * target_spam_ratio / (1 - target_spam_ratio)))
+        if target_spam >= spam_count:
+            return df
+        spam_sampled = spam_df.sample(n=target_spam, random_state=random_state)
+        balanced_df = pd.concat([ham_df, spam_sampled], ignore_index=True)
+
+    balanced_df = balanced_df.sample(frac=1.0, random_state=random_state).reset_index(drop=True)
+    return balanced_df
+
+
+def merge_and_dedupe_datasets(
+    data_dir: str = None,
+    target_spam_ratio: float = 0.40,
+    balance_labels: bool = True,
+    random_state: int = 42,
+) -> pd.DataFrame:
     """
     Load and merge all datasets with deduplication.
     
@@ -120,12 +253,16 @@ def merge_and_dedupe_datasets(data_dir: str = None) -> pd.DataFrame:
     1. spam.csv (original labeled dataset - RELIABLE)
     2. Combined-Labeled-Dataset.csv (only smishing labels - PARTIALLY RELIABLE)
     3. synthetic_scams.csv (generated OTP/financial scams - ESSENTIAL)
+    4. synthetic_scams_2026.csv (2026 threat patterns: delivery, toll, gift-card, crypto, etc.)
+    5. legitimate_banking_samples.csv (legitimate banking notifications, forced to label=0)
+    6. Dataset_5971.csv (ham/spam/smishing labels)
     
     Args:
         data_dir: Path to data directory. If None, uses project structure.
     
     Returns:
-        Combined, deduplicated DataFrame with columns: text, label
+        Combined DataFrame with columns: text, label.
+        If balance_labels=True, applies downsampling to approach target_spam_ratio.
     """
     if data_dir is None:
         data_dir = Path(__file__).resolve().parent.parent / "data" / "raw"
@@ -135,6 +272,9 @@ def merge_and_dedupe_datasets(data_dir: str = None) -> pd.DataFrame:
     spam_path = data_dir / "spam.csv"
     combined_path = data_dir / "Combined-Labeled-Dataset.csv"
     synthetic_path = data_dir / "synthetic_scams.csv"
+    synthetic_2026_path = data_dir / "synthetic_scams_2026.csv"
+    banking_path = data_dir / "legitimate_banking_samples.csv"
+    dataset_5971_path = data_dir / "Dataset_5971.csv"
 
     # Load spam.csv (most reliable dataset)
     print("📂 Loading spam.csv...")
@@ -154,9 +294,27 @@ def merge_and_dedupe_datasets(data_dir: str = None) -> pd.DataFrame:
     else:
         print(f"  ⚠️  No synthetic scams loaded - OTP detection will be poor!")
 
+    # Load 2026 threat pattern scams (delivery, toll, gift-card, crypto, etc.)
+    print("\n📂 Loading synthetic_scams_2026.csv...")
+    df_synthetic_2026 = load_synthetic_scams(str(synthetic_2026_path))
+    if len(df_synthetic_2026) > 0:
+        print(f"  ✅ Loaded {len(df_synthetic_2026)} 2026 scam pattern messages")
+    else:
+        print(f"  ⚠️  synthetic_scams_2026.csv not found — run generate_synthetic_scams_2026.py")
+    
+    # Load legitimate banking samples (to improve model robustness)
+    print("\n📂 Loading legitimate_banking_samples.csv...")
+    df_banking = load_legitimate_banking(str(banking_path))
+    print(f"  ✅ Loaded {len(df_banking)} legitimate banking samples")
+
+    # Load Dataset_5971 (ham/spam/smishing)
+    print("\n📂 Loading Dataset_5971.csv...")
+    df_5971 = load_dataset_5971(str(dataset_5971_path))
+    print(f"  ✅ Loaded {len(df_5971)} rows from Dataset_5971.csv")
+
     # Merge all datasets
     print("\n🔀 Merging datasets...")
-    dataframes_to_merge = [df_spam, df_combined, df_synthetic]
+    dataframes_to_merge = [df_spam, df_combined, df_synthetic, df_synthetic_2026, df_banking, df_5971]
     dataframes_to_merge = [df for df in dataframes_to_merge if len(df) > 0]
     
     df_merged = pd.concat(dataframes_to_merge, ignore_index=True)
@@ -171,7 +329,19 @@ def merge_and_dedupe_datasets(data_dir: str = None) -> pd.DataFrame:
     
     duplicates_removed = initial_count - len(df_deduped)
     print(f"  Removed {duplicates_removed} duplicates")
-    print(f"  Final dataset size: {len(df_deduped)}")
+    print(f"  Final dataset size before balancing: {len(df_deduped)}")
+
+    # Optional class balancing to prevent overfitting toward majority class.
+    if balance_labels:
+        print("\n⚖️  Balancing label distribution...")
+        before_balance = len(df_deduped)
+        df_deduped = balance_binary_labels(
+            df_deduped,
+            target_spam_ratio=target_spam_ratio,
+            random_state=random_state,
+        )
+        print(f"  Rows before balancing: {before_balance}")
+        print(f"  Rows after balancing:  {len(df_deduped)}")
 
     # Label distribution
     print("\n📊 Final dataset composition:")
@@ -179,7 +349,7 @@ def merge_and_dedupe_datasets(data_dir: str = None) -> pd.DataFrame:
     ham_count = label_counts.get(0, 0)
     spam_count = label_counts.get(1, 0)
     total = len(df_deduped)
-    
+
     print(f"  Ham (legitimate):  {ham_count:5,} ({ham_count/total*100:5.1f}%)")
     print(f"  Spam (scam):       {spam_count:5,} ({spam_count/total*100:5.1f}%)")
     
